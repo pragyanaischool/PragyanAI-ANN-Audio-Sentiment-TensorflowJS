@@ -46,7 +46,7 @@ function App() {
     loadModel();
   }, []);
 
-  // 2. Run Inference Pipeline with Debugging Logs
+  // 2. Run Inference Pipeline
   const runInference = async (audioBuffer) => {
     if (!model) return;
     setLoading(true);
@@ -56,11 +56,6 @@ function App() {
     try {
       const mfccFeatures = await processAudioForPrediction(audioBuffer);
       console.log("Extracted MFCC Features:", mfccFeatures);
-
-      // Check if features contain NaN (e.g. from complete silence)
-      if (mfccFeatures.some(isNaN)) {
-        throw new Error("Extracted MFCC features contain NaN values. Try speaking louder or upload a clear audio file.");
-      }
       
       // Create input tensor matching shape [1, 40][cite: 2]
       const inputTensor = tf.tensor2d(mfccFeatures, [1, mfccFeatures.length]);
