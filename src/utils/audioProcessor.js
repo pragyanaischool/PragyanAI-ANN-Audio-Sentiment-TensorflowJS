@@ -1,3 +1,4 @@
+// src/utils/audioProcessor.js
 import Meyda from 'meyda';
 
 const SAMPLE_RATE = 22050; // Matches your model training rate
@@ -9,7 +10,7 @@ const DURATION_SEC = 3.0;    // Target duration for analysis
 const EXPECTED_SAMPLES = SAMPLE_RATE * DURATION_SEC;
 
 /**
- * Processes an AudioBuffer to extract Mean MFCC features.
+ * Processes an AudioBuffer to extract Mean MFCC features with NaN safety fallback.
  */
 export const processAudioForPrediction = async (audioBuffer) => {
     const offlineContext = new OfflineAudioContext(
@@ -44,16 +45,33 @@ export const processAudioForPrediction = async (audioBuffer) => {
              });
              
              if (features) {
+                let frameValid = true;
                 for (let j = 0; j < N_MFCC; j++) {
-                    mfccSum[j] += features[j];
+                    if (isNaN(features[j]) || !isFinite(features[j])) {
+                        frameValid = false;
+                        break;
+                    }
                 }
-                framesProcessed++;
+
+                // Only add frame if all coefficients are valid numbers
+                if (frameValid) {
+                    for (let j = 0; j < N_MFCC; j++) {
+                        mfccSum[j] += features[j];
+                    }
+                    framesProcessed++;
+                }
              }
         }
     }
 
-    // Average the features across all frames (equivalent to librosa .mean(axis=1))
-    const meanMfccs = mfccSum.map(sum => (framesProcessed > 0 ? sum / framesProcessed : 0));
+    // If no valid frames were found (e.g., total silence), return a clean zero-filled array
+    if (framesProcessed === 0) {
+        console.warn("Warning: Audio signal was silent or yielded no valid frames. Returning zero-tensor.");
+        return new Float32Array(N_MFCC).fill(0);
+    }
+
+    // Average the features across all valid frames (equivalent to librosa .mean(axis=1))
+    const meanMfccs = mfccSum.map(sum => sum / framesProcessed);
     
     return new Float32Array(meanMfccs);
 };
