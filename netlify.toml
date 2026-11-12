@@ -1,8 +1,8 @@
 [build]
-  command = "CI=false npm run build"
+  command = "DISABLE_ESLINT_PLUGIN=true npm run build"
   publish = "build"
 
 [[redirects]]
   from = "/*"
-  to = "public/index.html"
+  to = "/index.html"
   status = 200
