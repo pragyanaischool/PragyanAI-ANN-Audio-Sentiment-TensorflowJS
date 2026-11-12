@@ -1,3 +1,4 @@
+// src/App.js
 import React, { useState, useEffect, useRef } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import { processAudioForPrediction } from './utils/audioProcessor';
@@ -45,7 +46,7 @@ function App() {
     loadModel();
   }, []);
 
-  // 2. Run Inference Pipeline
+  // 2. Run Inference Pipeline with Debugging Logs
   const runInference = async (audioBuffer) => {
     if (!model) return;
     setLoading(true);
@@ -54,29 +55,47 @@ function App() {
 
     try {
       const mfccFeatures = await processAudioForPrediction(audioBuffer);
+      console.log("Extracted MFCC Features:", mfccFeatures);
+
+      // Check if features contain NaN (e.g. from complete silence)
+      if (mfccFeatures.some(isNaN)) {
+        throw new Error("Extracted MFCC features contain NaN values. Try speaking louder or upload a clear audio file.");
+      }
       
       // Create input tensor matching shape [1, 40][cite: 2]
       const inputTensor = tf.tensor2d(mfccFeatures, [1, mfccFeatures.length]);
 
       setStatus('Running sentiment analysis...');
       const outputTensor = model.predict(inputTensor);
-      const probabilities = await outputTensor.data();
+      
+      // Handle graph model output format (can be a single tensor or array of tensors)
+      const resTensor = Array.isArray(outputTensor) ? outputTensor[0] : outputTensor;
+      const probabilities = await resTensor.data();
+      console.log("Model Output Probabilities:", probabilities);
 
-      const predictedClass = Array.from(probabilities).indexOf(Math.max(...probabilities));
-      const confidence = probabilities[predictedClass];
+      const maxProb = Math.max(...probabilities);
+      const predictedClass = Array.from(probabilities).indexOf(maxProb);
+
+      if (predictedClass === -1 || isNaN(maxProb)) {
+        throw new Error("Invalid model prediction output.");
+      }
       
       setPrediction({
         emotion: emotionMap[predictedClass] || `Class ${predictedClass}`,
-        confidence: (confidence * 100).toFixed(2)
+        confidence: (maxProb * 100).toFixed(2)
       });
       
       setStatus('Analysis Complete.');
 
       inputTensor.dispose();
-      outputTensor.dispose();
+      if (Array.isArray(outputTensor)) {
+        outputTensor.forEach(t => t.dispose());
+      } else {
+        outputTensor.dispose();
+      }
     } catch (error) {
       console.error('Inference error:', error);
-      setStatus('Error during inference execution.');
+      setStatus(`Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -116,8 +135,10 @@ function App() {
   };
 
   const stopRecording = () => {
-    mediaRecorderRef.current.stop();
-    setRecording(false);
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    }
   };
 
   // 4. File Upload Handler
@@ -139,7 +160,7 @@ function App() {
   };
 
   return (
-    <div className="App" style={{ textAlign: 'center', padding: '40px' }}>
+    <div className="App" style={{ textAlign: 'center', padding: '40px', fontFamily: 'sans-serif' }}>
       <h1>🎙️ Client-Side Audio Sentiment Analysis</h1>
       <p>Powered by React & TensorFlow.js</p>
       
